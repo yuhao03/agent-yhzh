@@ -1,0 +1,21 @@
+.env
+.env.local
+*.log
+*.db
+.DS_Store
+
+# Python / uv
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+apps/api/.venv/
+
+# Node / Next.js
+node_modules/
+apps/web/.next/
+apps/web/out/
+
+# Local data
+.data/
