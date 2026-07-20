@@ -11,6 +11,7 @@ from agent_yhzh.security import get_current_caller
 from agent_yhzh.services.knowledge import generate_user_answer, search_knowledge
 from agent_yhzh.services.learning import capture_interaction, process_interaction_event
 from agent_yhzh.services.memory import list_memories
+from agent_yhzh.services.model_config import get_runtime_model_config
 from agent_yhzh.worker import enqueue_interaction
 
 
@@ -75,8 +76,11 @@ async def assistant_node(
             product_scope=caller.product_scope,
         )
         memories = await list_memories(session, caller, limit=20)
+        runtime = await get_runtime_model_config(
+            session, caller.tenant_id, caller.space_id
+        )
 
-    answer = await generate_user_answer(question, knowledge, memories)
+    answer = await generate_user_answer(question, knowledge, memories, runtime)
     return {"messages": [AIMessage(content=answer)]}
 
 

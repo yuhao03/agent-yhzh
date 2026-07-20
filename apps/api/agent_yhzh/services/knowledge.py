@@ -1,4 +1,3 @@
-import os
 import uuid
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
@@ -6,7 +5,6 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agent_yhzh.config import settings
 from agent_yhzh.models import (
     AuditEvent,
     Document,
@@ -30,6 +28,7 @@ from agent_yhzh.schemas import (
 )
 from agent_yhzh.security import CallerContext
 from agent_yhzh.services.audit import add_audit, add_outbox
+from agent_yhzh.services.model_config import RuntimeModelConfig, litellm_model_name
 from agent_yhzh.services.retrieval import hybrid_search, upsert_item_embedding
 
 
@@ -688,6 +687,7 @@ async def generate_user_answer(
     question: str,
     knowledge: list[KnowledgeItem],
     memories: list[UserMemory] | None = None,
+    runtime: RuntimeModelConfig | None = None,
 ) -> str:
     if not knowledge:
         return (
@@ -700,11 +700,11 @@ async def generate_user_answer(
     memory_context = "\n".join(
         f"- {memory.memory_type}: {memory.content[:500]}" for memory in (memories or [])
     )
-    if settings.openai_api_key or os.getenv("OPENAI_API_KEY"):
+    if runtime and (runtime.api_key or runtime.base_url):
         from litellm import acompletion
 
         response = await acompletion(
-            model=settings.model_name,
+            model=litellm_model_name(runtime.provider, runtime.chat_model),
             messages=[
                 {
                     "role": "system",
@@ -722,7 +722,11 @@ async def generate_user_answer(
                     ),
                 },
             ],
-            temperature=0.2,
+            api_key=runtime.api_key,
+            api_base=runtime.base_url,
+            temperature=runtime.temperature,
+            max_tokens=runtime.max_tokens,
+            timeout=runtime.timeout_seconds,
         )
         return response.choices[0].message.content or "暂时无法生成回答。"
     summaries = "；".join(item.content.strip()[:180] for item in knowledge[:3])

@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     agent_service_token: str = "change-me-agent-service-token"
     ops_api_key: str = "change-me-ops-key"
     user_hash_salt: str = "change-me-user-salt"
+    config_encryption_key: str = "change-me-config-encryption-key"
     cors_origins: str = "http://127.0.0.1:3000,http://localhost:3000"
     expose_public_docs: bool = False
 
@@ -34,8 +35,10 @@ class Settings(BaseSettings):
     candidate_review_threshold: int = 2
     candidate_min_distinct_users: int = 2
     request_rate_limit_per_minute: int = 60
+    allow_private_model_urls: bool = False
 
     model_name: str = "openai/gpt-5.4-mini"
+    model_base_url: str = ""
     openai_api_key: str = ""
     embedding_model: str = "local/hash-1536"
     embedding_dimensions: int = 1536
@@ -72,6 +75,7 @@ class Settings(BaseSettings):
         "agent_service_token",
         "ops_api_key",
         "user_hash_salt",
+        "config_encryption_key",
     )
     @classmethod
     def reject_default_production_secrets(cls, value: str, info):
@@ -105,6 +109,7 @@ class Settings(BaseSettings):
             "agent_service_token": self.agent_service_token,
             "ops_api_key": self.ops_api_key,
             "user_hash_salt": self.user_hash_salt,
+            "config_encryption_key": self.config_encryption_key,
         }
         bad = [name for name, value in insecure.items() if not value or value.startswith("change-me")]
         if bad:

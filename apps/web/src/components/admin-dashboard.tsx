@@ -22,6 +22,7 @@ import {
   MessageSquareText,
   Network,
   Search,
+  Settings2,
   ShieldCheck,
   SlidersHorizontal,
 } from "lucide-react";
@@ -29,6 +30,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useMemo, useState } from "react";
 
 import { KnowledgeGraph } from "@/components/knowledge-graph";
+import { ModelSettings } from "@/components/model-settings";
 import { QualityChart } from "@/components/quality-chart";
 import type {
   AdminDashboardPayload,
@@ -39,7 +41,7 @@ import type {
   KnowledgeRelation,
 } from "@/lib/types";
 
-type View = "overview" | "candidates" | "knowledge" | "graph" | "documents" | "relations" | "audits";
+type View = "overview" | "candidates" | "knowledge" | "graph" | "documents" | "relations" | "models" | "audits";
 type Density = "compact" | "comfortable";
 
 const candidateHelper = createColumnHelper<KnowledgeCandidate>();
@@ -200,6 +202,7 @@ export function AdminDashboard({ data, error }: { data: AdminDashboardPayload | 
         <Nav icon={GitFork} label="关系图谱" active={view === "graph"} onClick={() => setView("graph")} />
         <Nav icon={FileText} label="文档导入" active={view === "documents"} onClick={() => setView("documents")} />
         <Nav icon={Network} label="关系管理" active={view === "relations"} onClick={() => setView("relations")} />
+        <Nav icon={Settings2} label="模型配置" active={view === "models"} onClick={() => setView("models")} />
         <Nav icon={History} label="审计日志" active={view === "audits"} onClick={() => setView("audits")} />
       </nav>
       <div className="admin-sidebar-foot">内部管理系统<br />普通用户无入口、无接口权限</div>
@@ -216,9 +219,9 @@ export function AdminDashboard({ data, error }: { data: AdminDashboardPayload | 
 
       {view !== "overview" ? <section className="admin-panel">
         <div className="panel-toolbar admin-grid-toolbar"><div><h2>{viewTitle(view)}</h2><p>{viewDescription(view)}</p></div><div className="toolbar-actions">
-          {!["graph"].includes(view) ? <label className="search-box"><Search size={15} /><input aria-label="筛选表格" onChange={(event) => setFilter(event.target.value)} placeholder="筛选当前视图" value={filter} /></label> : null}
+          {!["graph", "models"].includes(view) ? <label className="search-box"><Search size={15} /><input aria-label="筛选表格" onChange={(event) => setFilter(event.target.value)} placeholder="筛选当前视图" value={filter} /></label> : null}
           {view === "knowledge" ? <select aria-label="知识类型筛选" onChange={(event) => setTypeFilter(event.target.value)} value={typeFilter}><option value="all">全部类型</option><option value="faq">FAQ</option><option value="process">流程</option><option value="policy">规则</option><option value="case">案例</option></select> : null}
-          {!["graph"].includes(view) ? <button className="icon-action" onClick={() => setDensity(density === "compact" ? "comfortable" : "compact")} title="切换密度" type="button"><SlidersHorizontal size={16} /></button> : null}
+          {!["graph", "models"].includes(view) ? <button className="icon-action" onClick={() => setDensity(density === "compact" ? "comfortable" : "compact")} title="切换密度" type="button"><SlidersHorizontal size={16} /></button> : null}
           <button className="secondary-action" onClick={saveCurrentView} type="button">保存视图</button>
           {view === "knowledge" ? <button className="promote-button" onClick={() => setCreating(true)} type="button">+ 新增知识</button> : null}
           {view === "relations" ? <button className="promote-button" onClick={() => setShowRelationForm(true)} type="button">+ 新增关系</button> : null}
@@ -228,6 +231,7 @@ export function AdminDashboard({ data, error }: { data: AdminDashboardPayload | 
         {view === "graph" && data ? <KnowledgeGraph graph={data.graph} /> : null}
         {view === "documents" ? <><form className="upload-row" onSubmit={uploadDocument}><input accept=".txt,.md,.html,.htm,.pdf,.docx" name="file" required type="file" /><button className="promote-button" disabled={saving} type="submit">{saving ? "导入中…" : "上传并解析"}</button><span>解析结果先进入候选池，不会自动发布。</span></form><DataTable density={density} table={tables.documents} /></> : null}
         {view === "relations" ? <DataTable density={density} table={tables.relations} /> : null}
+        {view === "models" ? <ModelSettings configs={data?.modelConfigs ?? []} onChanged={() => router.refresh()} /> : null}
         {view === "audits" ? <DataTable density={density} table={tables.audits} /> : null}
       </section> : null}
       {data?.views.length ? <div className="saved-views"><strong>已保存视图</strong>{data.views.map((item) => <button key={item.id} onClick={() => { const config = item.configuration as { view?: View; filter?: string; typeFilter?: string; density?: Density }; if (config.view) setView(config.view); setFilter(config.filter ?? ""); setTypeFilter(config.typeFilter ?? "all"); setDensity(config.density ?? "comfortable"); }} type="button">{item.name}</button>)}</div> : null}
@@ -254,8 +258,8 @@ function Nav({ icon: Icon, label, active, onClick }: { icon: typeof LayoutDashbo
 function Status({ value }: { value: string }) { return <span className={`status-pill status-${value}`}>{({ pending_review: "待审核", observed: "观察中", published: "已发布", completed: "已完成", processing: "处理中", queued: "排队中", failed: "失败", draft: "草稿" } as Record<string, string>)[value] ?? value}</span>; }
 function formatTime(value: string) { return new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)); }
 function titleFor(data: AdminDashboardPayload | null, id: string) { return data?.knowledge.find((item) => item.id === id)?.title ?? id.slice(0, 8); }
-function viewTitle(view: View) { return ({ candidates: "互动候选池", knowledge: "知识资产表", graph: "知识关系图谱", documents: "文档导入与解析", relations: "显式关系管理", audits: "不可变审计记录", overview: "运营总览" } as Record<View, string>)[view]; }
-function viewDescription(view: View) { return ({ candidates: "达到次数与独立用户阈值后进入人工审核。", knowledge: "支持筛选、排序、密度、保存视图及查看版本证据。", graph: "实线为显式关系，虚线仅作为辅助探索。", documents: "文档被切块、向量化并转成待审核候选。", relations: "每条正式关系都必须带证据与置信度。", audits: "记录管理动作、对象和操作者，便于追责与排查。", overview: "观察系统成长与治理健康度。" } as Record<View, string>)[view]; }
+function viewTitle(view: View) { return ({ candidates: "互动候选池", knowledge: "知识资产表", graph: "知识关系图谱", documents: "文档导入与解析", relations: "显式关系管理", models: "LLM 与 Embedding 配置", audits: "不可变审计记录", overview: "运营总览" } as Record<View, string>)[view]; }
+function viewDescription(view: View) { return ({ candidates: "达到次数与独立用户阈值后进入人工审核。", knowledge: "支持筛选、排序、密度、保存视图及查看版本证据。", graph: "实线为显式关系，虚线仅作为辅助探索。", documents: "文档被切块、向量化并转成待审核候选。", relations: "每条正式关系都必须带证据与置信度。", models: "安全配置模型服务地址、密钥和运行参数，保存后立即生效。", audits: "记录管理动作、对象和操作者，便于追责与排查。", overview: "观察系统成长与治理健康度。" } as Record<View, string>)[view]; }
 
 function KnowledgeFormModal({ candidate, error, mode, onClose, onSubmit, saving }: { candidate?: KnowledgeCandidate; error: string; mode: "promote" | "create"; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; saving: boolean }) {
   return <div className="modal-backdrop" role="presentation"><section aria-modal="true" className="knowledge-modal" role="dialog"><div className="modal-header"><div><h2>{mode === "promote" ? "审核候选知识" : "手工新增知识"}</h2><p>填写已经核验、可直接用于回答用户的标准内容。</p></div><button aria-label="关闭" onClick={onClose} type="button">×</button></div><form className="knowledge-form" onSubmit={onSubmit}>

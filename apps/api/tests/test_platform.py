@@ -2,12 +2,16 @@ import uuid
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from agent_yhzh.app import app
 from agent_yhzh.config import settings
 from agent_yhzh.database import init_database, session_factory
-from agent_yhzh.models import InteractionEvent, KnowledgeCandidate
+from agent_yhzh.models import InteractionEvent, KnowledgeCandidate, ModelProviderConfig
+from agent_yhzh.services.model_config import (
+    get_runtime_model_config,
+    validate_model_base_url,
+)
 
 
 def admin_headers(role: str = "admin") -> dict[str, str]:
@@ -177,3 +181,70 @@ async def test_promotion_cannot_bypass_review_reason(client: AsyncClient):
         },
     )
     assert response.status_code == 422
+
+
+async def test_model_config_secret_is_encrypted_and_hot_loaded(client: AsyncClient):
+    marker = uuid.uuid4().hex
+    api_key = f"sk-secret-{marker}"
+    created = await client.post(
+        "/api/v1/admin/model-configs",
+        headers=admin_headers(),
+        json={
+            "name": f"provider-{marker}",
+            "provider": "openai_compatible",
+            "base_url": "https://llm.example.test/v1",
+            "chat_model": "test-chat-model",
+            "embedding_model": "local/hash-1536",
+            "api_key": api_key,
+            "temperature": 0.3,
+            "max_tokens": 2048,
+            "timeout_seconds": 30,
+            "enabled": True,
+            "is_default": True,
+        },
+    )
+    assert created.status_code == 201
+    body = created.json()
+    assert "api_key" not in body
+    assert body["api_key_configured"] is True
+    assert api_key not in str(body)
+
+    config_id = uuid.UUID(body["id"])
+    async with session_factory() as session:
+        stored = await session.get(ModelProviderConfig, config_id)
+        assert stored is not None
+        assert stored.api_key_ciphertext != api_key
+        assert api_key not in (stored.api_key_ciphertext or "")
+        runtime = await get_runtime_model_config(
+            session, settings.default_tenant_id, settings.default_space_id
+        )
+        assert runtime.source == "database"
+        assert runtime.api_key == api_key
+        assert runtime.base_url == "https://llm.example.test/v1"
+        await session.execute(
+            delete(ModelProviderConfig).where(ModelProviderConfig.id == config_id)
+        )
+        await session.commit()
+
+    forbidden = await client.post(
+        "/api/v1/admin/model-configs",
+        headers=admin_headers("reviewer"),
+        json={
+            "name": "reviewer-cannot-create",
+            "provider": "ollama",
+            "base_url": "http://127.0.0.1:11434",
+            "chat_model": "qwen3",
+        },
+    )
+    assert forbidden.status_code == 403
+
+
+def test_private_model_urls_are_blocked_when_not_explicitly_allowed():
+    previous = settings.allow_private_model_urls
+    settings.allow_private_model_urls = False
+    try:
+        with pytest.raises(ValueError, match="private_model_url_not_allowed"):
+            validate_model_base_url("http://127.0.0.1:11434/v1")
+        validate_model_base_url("https://api.example.com/v1")
+    finally:
+        settings.allow_private_model_urls = previous

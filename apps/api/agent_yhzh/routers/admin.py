@@ -20,6 +20,10 @@ from agent_yhzh.schemas import (
     KnowledgeRelationRead,
     KnowledgeViewCreate,
     KnowledgeViewRead,
+    ModelConnectionTestResponse,
+    ModelProviderConfigCreate,
+    ModelProviderConfigRead,
+    ModelProviderConfigUpdate,
     PromoteCandidateRequest,
     PromoteCandidateResponse,
     QualityTrendPoint,
@@ -51,6 +55,12 @@ from agent_yhzh.services.knowledge import (
     update_knowledge,
 )
 from agent_yhzh.services.retrieval import hybrid_search
+from agent_yhzh.services.model_config import (
+    create_model_config,
+    list_model_configs,
+    test_model_connection,
+    update_model_config,
+)
 from agent_yhzh.worker import enqueue_document
 
 
@@ -59,6 +69,12 @@ router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
 def ensure_write(context: CallerContext) -> CallerContext:
     return require_admin_write(context)
+
+
+def model_config_error(error: ValueError) -> HTTPException:
+    if str(error) == "model_config_name_exists":
+        return HTTPException(status_code=409, detail="Config name already exists")
+    return HTTPException(status_code=422, detail="Model Base URL is not allowed")
 
 
 @router.get("/stats", response_model=AdminStats)
@@ -290,3 +306,64 @@ async def debug_retrieval(
         }
         for result in results
     ]
+
+
+@router.get("/model-configs", response_model=list[ModelProviderConfigRead])
+async def get_model_configs(
+    context: CallerContext = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    return await list_model_configs(session, context)
+
+
+@router.post(
+    "/model-configs", response_model=ModelProviderConfigRead, status_code=201
+)
+async def post_model_config(
+    payload: ModelProviderConfigCreate,
+    context: CallerContext = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    try:
+        return await create_model_config(session, ensure_write(context), payload)
+    except ValueError as error:
+        raise model_config_error(error) from error
+
+
+@router.patch(
+    "/model-configs/{config_id}", response_model=ModelProviderConfigRead
+)
+async def patch_model_config(
+    config_id: uuid.UUID,
+    payload: ModelProviderConfigUpdate,
+    context: CallerContext = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    try:
+        config = await update_model_config(
+            session, ensure_write(context), config_id, payload
+        )
+    except ValueError as error:
+        raise model_config_error(error) from error
+    if config is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    return config
+
+
+@router.post(
+    "/model-configs/{config_id}/test", response_model=ModelConnectionTestResponse
+)
+async def post_model_connection_test(
+    config_id: uuid.UUID,
+    context: CallerContext = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    try:
+        result = await test_model_connection(
+            session, ensure_write(context), config_id
+        )
+    except ValueError as error:
+        raise model_config_error(error) from error
+    if result is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    return result

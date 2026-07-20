@@ -21,6 +21,7 @@ from agent_yhzh.models import (
 from agent_yhzh.observability import IMPORT_JOBS
 from agent_yhzh.security import CallerContext
 from agent_yhzh.services.embeddings import content_hash, embed_text
+from agent_yhzh.services.model_config import get_runtime_model_config
 from agent_yhzh.services.object_store import get_object, put_object
 
 
@@ -153,6 +154,9 @@ async def process_document_import(session: AsyncSession, job_id: uuid.UUID) -> N
         if not chunks:
             raise ValueError("document_contains_no_text")
 
+        runtime = await get_runtime_model_config(
+            session, document.tenant_id, document.space_id
+        )
         for index, chunk_content in enumerate(chunks):
             chunk = DocumentChunk(
                 tenant_id=document.tenant_id,
@@ -165,14 +169,14 @@ async def process_document_import(session: AsyncSession, job_id: uuid.UUID) -> N
             )
             session.add(chunk)
             await session.flush()
-            vector = await embed_text(chunk_content)
+            vector = await embed_text(chunk_content, runtime)
             session.add(
                 KnowledgeEmbedding(
                     tenant_id=document.tenant_id,
                     space_id=document.space_id,
                     object_type="document_chunk",
                     object_id=chunk.id,
-                    model=settings.embedding_model,
+                    model=runtime.embedding_model or settings.embedding_model,
                     vector=vector,
                     content_hash=chunk.content_hash,
                 )

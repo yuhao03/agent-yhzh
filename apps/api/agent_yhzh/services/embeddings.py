@@ -2,6 +2,7 @@ import hashlib
 import math
 
 from agent_yhzh.config import settings
+from agent_yhzh.services.model_config import RuntimeModelConfig, litellm_model_name
 
 
 def content_hash(content: str) -> str:
@@ -24,15 +25,23 @@ def deterministic_embedding(content: str) -> list[float]:
     return [value / norm for value in vector]
 
 
-async def embed_text(content: str) -> list[float]:
-    if settings.embedding_model.startswith("local/") or not settings.openai_api_key:
+async def embed_text(
+    content: str, runtime: RuntimeModelConfig | None = None
+) -> list[float]:
+    model = (runtime.embedding_model if runtime else settings.embedding_model) or settings.embedding_model
+    api_key = runtime.api_key if runtime else settings.openai_api_key
+    base_url = runtime.base_url if runtime else settings.model_base_url or None
+    provider = runtime.provider if runtime else "openai"
+    if model.startswith("local/") or (not api_key and not base_url):
         return deterministic_embedding(content)
     from litellm import aembedding
 
     response = await aembedding(
-        model=settings.embedding_model,
+        model=litellm_model_name(provider, model),
         input=[content],
-        api_key=settings.openai_api_key,
+        api_key=api_key,
+        api_base=base_url,
+        timeout=runtime.timeout_seconds if runtime else 60,
     )
     return list(response.data[0]["embedding"])
 

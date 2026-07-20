@@ -9,6 +9,7 @@ from agent_yhzh.config import settings
 from agent_yhzh.models import KnowledgeEmbedding, KnowledgeItem, KnowledgeRelation
 from agent_yhzh.observability import RETRIEVAL_REQUESTS
 from agent_yhzh.services.embeddings import cosine_similarity, embed_text
+from agent_yhzh.services.model_config import get_runtime_model_config
 
 
 @dataclass
@@ -50,7 +51,8 @@ async def hybrid_search(
         RETRIEVAL_REQUESTS.labels(result="empty").inc()
         return []
 
-    query_vector = await embed_text(query)
+    runtime = await get_runtime_model_config(session, tenant_id, space_id)
+    query_vector = await embed_text(query, runtime)
     query_identifiers = {
         value.lower()
         for value in re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]{7,}", query)
@@ -124,14 +126,16 @@ async def upsert_item_embedding(session: AsyncSession, item: KnowledgeItem) -> N
     from agent_yhzh.services.embeddings import content_hash
 
     digest = content_hash(content)
+    runtime = await get_runtime_model_config(session, item.tenant_id, item.space_id)
+    embedding_model = runtime.embedding_model or settings.embedding_model
     embedding = await session.scalar(
         select(KnowledgeEmbedding).where(
             KnowledgeEmbedding.object_type == "knowledge_item",
             KnowledgeEmbedding.object_id == item.id,
-            KnowledgeEmbedding.model == settings.embedding_model,
+            KnowledgeEmbedding.model == embedding_model,
         )
     )
-    vector = await embed_text(content)
+    vector = await embed_text(content, runtime)
     if embedding is None:
         session.add(
             KnowledgeEmbedding(
@@ -139,7 +143,7 @@ async def upsert_item_embedding(session: AsyncSession, item: KnowledgeItem) -> N
                 space_id=item.space_id,
                 object_type="knowledge_item",
                 object_id=item.id,
-                model=settings.embedding_model,
+                model=embedding_model,
                 vector=vector,
                 content_hash=digest,
             )

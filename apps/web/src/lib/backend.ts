@@ -39,7 +39,7 @@ export async function fetchAdmin<T>(
 export async function getAdminDashboard(
   session: AdminSession,
 ): Promise<AdminDashboardPayload> {
-  const [stats, candidates, knowledge, graph, trends, documents, imports, relations, views, audits] =
+  const [stats, candidates, knowledge, graph, trends, documents, imports, relations, views, audits, modelConfigs] =
     await Promise.all([
       fetchAdmin<AdminDashboardPayload["stats"]>(session, "/api/v1/admin/stats"),
       fetchAdmin<AdminDashboardPayload["candidates"]>(session, "/api/v1/admin/candidates"),
@@ -51,6 +51,7 @@ export async function getAdminDashboard(
       fetchAdmin<AdminDashboardPayload["relations"]>(session, "/api/v1/admin/relations"),
       fetchAdmin<AdminDashboardPayload["views"]>(session, "/api/v1/admin/views"),
       fetchAdmin<AdminDashboardPayload["audits"]>(session, "/api/v1/admin/audits"),
+      fetchAdmin<AdminDashboardPayload["modelConfigs"]>(session, "/api/v1/admin/model-configs"),
     ]);
-  return { stats, candidates, knowledge, graph, trends, documents, imports, relations, views, audits };
+  return { stats, candidates, knowledge, graph, trends, documents, imports, relations, views, audits, modelConfigs };
 }

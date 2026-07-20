@@ -137,6 +137,29 @@ export type AuditEvent = {
   created_at: string;
 };
 
+export type ModelProviderConfig = {
+  id: string;
+  tenant_id: string;
+  space_id: string;
+  name: string;
+  provider: "openai" | "openai_compatible" | "azure" | "anthropic" | "ollama";
+  base_url: string | null;
+  chat_model: string;
+  embedding_model: string | null;
+  api_key_configured: boolean;
+  api_key_hint: string | null;
+  temperature: number;
+  max_tokens: number;
+  timeout_seconds: number;
+  enabled: boolean;
+  is_default: boolean;
+  last_test_status: string | null;
+  last_test_message: string | null;
+  last_tested_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type AdminDashboardPayload = {
   stats: AdminStats;
   candidates: KnowledgeCandidate[];
@@ -148,4 +171,5 @@ export type AdminDashboardPayload = {
   relations: KnowledgeRelation[];
   views: KnowledgeView[];
   audits: AuditEvent[];
+  modelConfigs: ModelProviderConfig[];
 };

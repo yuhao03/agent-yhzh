@@ -340,3 +340,83 @@ class RetrievalDebugItem(BaseModel):
     lexical_score: float
     vector_score: float
     relation_score: float
+
+
+ModelProvider = Literal[
+    "openai", "openai_compatible", "azure", "anthropic", "ollama"
+]
+
+
+class ModelProviderConfigCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=160)
+    provider: ModelProvider = "openai_compatible"
+    base_url: str | None = Field(default=None, max_length=1000)
+    chat_model: str = Field(min_length=1, max_length=240)
+    embedding_model: str | None = Field(default=None, max_length=240)
+    api_key: str | None = Field(default=None, max_length=2000)
+    temperature: float = Field(default=0.2, ge=0, le=2)
+    max_tokens: int = Field(default=4096, ge=1, le=200_000)
+    timeout_seconds: int = Field(default=60, ge=1, le=600)
+    enabled: bool = True
+    is_default: bool = True
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_base_url(cls, value: str | None) -> str | None:
+        normalized = (value or "").strip().rstrip("/")
+        if normalized and not normalized.startswith(("http://", "https://")):
+            raise ValueError("base_url must start with http:// or https://")
+        return normalized or None
+
+
+class ModelProviderConfigUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=160)
+    provider: ModelProvider | None = None
+    base_url: str | None = Field(default=None, max_length=1000)
+    chat_model: str | None = Field(default=None, min_length=1, max_length=240)
+    embedding_model: str | None = Field(default=None, max_length=240)
+    api_key: str | None = Field(default=None, max_length=2000)
+    temperature: float | None = Field(default=None, ge=0, le=2)
+    max_tokens: int | None = Field(default=None, ge=1, le=200_000)
+    timeout_seconds: int | None = Field(default=None, ge=1, le=600)
+    enabled: bool | None = None
+    is_default: bool | None = None
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_base_url(cls, value: str | None) -> str | None:
+        normalized = (value or "").strip().rstrip("/")
+        if normalized and not normalized.startswith(("http://", "https://")):
+            raise ValueError("base_url must start with http:// or https://")
+        return normalized or None
+
+
+class ModelProviderConfigRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    tenant_id: str
+    space_id: str
+    name: str
+    provider: str
+    base_url: str | None
+    chat_model: str
+    embedding_model: str | None
+    api_key_configured: bool
+    api_key_hint: str | None
+    temperature: float
+    max_tokens: int
+    timeout_seconds: int
+    enabled: bool
+    is_default: bool
+    last_test_status: str | None
+    last_test_message: str | None
+    last_tested_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ModelConnectionTestResponse(BaseModel):
+    success: bool
+    latency_ms: int
+    message: str

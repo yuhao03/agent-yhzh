@@ -537,6 +537,39 @@ class PromotionPolicy(TimestampMixin, TenantSpaceMixin, Base):
     )
 
 
+class ModelProviderConfig(TimestampMixin, TenantSpaceMixin, Base):
+    __tablename__ = "model_provider_configs"
+    __table_args__ = table_args(
+        "knowledge",
+        UniqueConstraint(
+            "tenant_id", "space_id", "name", name="uq_model_provider_config_name"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    provider: Mapped[str] = mapped_column(
+        String(40), default="openai_compatible", nullable=False
+    )
+    base_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    chat_model: Mapped[str] = mapped_column(String(240), nullable=False)
+    embedding_model: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    api_key_ciphertext: Mapped[str | None] = mapped_column(Text, nullable=True)
+    api_key_hint: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    temperature: Mapped[float] = mapped_column(Float, default=0.2, nullable=False)
+    max_tokens: Mapped[int] = mapped_column(Integer, default=4096, nullable=False)
+    timeout_seconds: Mapped[int] = mapped_column(Integer, default=60, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    last_test_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    last_test_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    last_tested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
 class OutboxEvent(TimestampMixin, Base):
     __tablename__ = "outbox_events"
     __table_args__ = table_args("knowledge")

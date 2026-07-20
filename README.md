@@ -22,6 +22,7 @@
 - 查看知识 Grid View 与局部关系图谱；
 - 保存筛选视图、查看证据/版本/审核详情和不可变审计记录；
 - 上传文档并把解析片段送入候选审核池；
+- 在“模型配置”中安全维护 LLM/Embedding 的服务商、Base URL、模型 ID、API Key 和运行参数；
 - 观察空库如何随真实使用逐步成长。
 
 用户只会感受到回答从“不知道”逐步变为“能够基于已确认信息作答”。普通用户没有知识库入口，也没有知识库 API 权限。用户可独立控制是否允许受控学习，并可查看、删除或清空仅属于自己的私有记忆。
@@ -68,6 +69,10 @@ MODEL_NAME=openai/gpt-5.4-mini
 OPENAI_API_KEY=你的密钥
 ```
 
+也可以登录管理员后台，在“模型配置”中新增 OpenAI、OpenAI 兼容接口、Azure OpenAI、Anthropic 或 Ollama 连接。后台配置优先于环境变量，保存后无需重启即可生效。API Key 使用 `CONFIG_ENCRYPTION_KEY` 派生的密钥加密入库，读取接口只返回掩码。
+
+生产环境默认阻止模型连接访问内网、回环和链路本地地址，以降低 SSRF 风险。确需连接内网 Ollama/vLLM 时，经过网络评审后显式设置 `ALLOW_PRIVATE_MODEL_URLS=true`。
+
 ## 知识成长闭环
 
 ```text
@@ -109,5 +114,6 @@ make infra-down # 停止本项目基础设施
 - [x] Celery 学习任务、保留期清理、私有记忆生命周期和 Outbox
 - [x] 证据、版本、审核、关系、审计和 Alembic 迁移
 - [x] Prometheus、结构化日志、可选 OpenTelemetry/Langfuse 配置
+- [x] 后台 LLM/Embedding 配置、API Key 加密、连接测试和运行时热加载
 - [x] 权限、脱敏、阈值、记忆隔离、文档导入和检索回归测试
 - [ ] 上线时接入企业 OIDC、真实 embedding/rerank 模型、病毒扫描和双人高风险审批
