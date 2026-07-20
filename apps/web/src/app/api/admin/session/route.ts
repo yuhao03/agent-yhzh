@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   }
 
   const cookieStore = await cookies();
-  cookieStore.set(ADMIN_COOKIE, createAdminSessionToken(), {
+    cookieStore.set(ADMIN_COOKIE, createAdminSessionToken("admin"), {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",

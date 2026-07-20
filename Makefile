@@ -14,7 +14,7 @@ setup-local:
 	cd apps/web && npm install
 
 infra-up:
-	docker compose --env-file .env up -d postgres redis
+	docker compose --env-file .env up -d postgres redis minio
 
 infra-down:
 	docker compose --env-file .env down
@@ -23,7 +23,7 @@ api:
 	cd apps/api && uv run python main.py
 
 api-prod:
-	cd apps/api && ENVIRONMENT=production uv run python main.py
+	cd apps/api && uv run uvicorn agent_yhzh.app:app --host 0.0.0.0 --port 8123
 
 web:
 	cd apps/web && npm run dev
@@ -35,8 +35,8 @@ worker:
 	cd apps/api && uv run celery -A agent_yhzh.worker.celery_app worker --loglevel=INFO
 
 test:
-	cd apps/api && uv run pytest
-	cd apps/web && npm run lint
+	cd apps/api && uv run ruff check . && uv run mypy agent_yhzh --ignore-missing-imports && uv run pytest
+	cd apps/web && npm run lint && npm run build
 
 lint:
 	cd apps/api && uv run ruff check .

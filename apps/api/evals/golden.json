@@ -1,0 +1,12 @@
+[
+  {
+    "query": "如何办理专项流程",
+    "expected_title_contains": "专项办理",
+    "notes": "命中管理员已发布的流程知识"
+  },
+  {
+    "query": "系统没有可靠依据时应该怎样回答",
+    "expected_title_contains": "回答边界",
+    "notes": "用于上线前补充边界类正式知识后回归"
+  }
+]

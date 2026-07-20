@@ -29,9 +29,7 @@ export default function Home() {
           <span className="brand-mark">砺</span>
           <span>砺知智能</span>
         </Link>
-        <Link className="admin-entry" href="/admin/login">
-          管理员入口
-        </Link>
+        <span className="user-boundary">面向业务用户</span>
       </nav>
 
       <section className="hero-grid">

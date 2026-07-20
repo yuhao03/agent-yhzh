@@ -6,6 +6,8 @@ import {
 } from "@copilotkit/react-core/v2";
 import { MessageCircleMore } from "lucide-react";
 
+import { PrivacyControls } from "@/components/privacy-controls";
+
 export function UserAssistant() {
   useConfigureSuggestions({
     suggestions: [
@@ -38,6 +40,7 @@ export function UserAssistant() {
         }}
       />
       <div className="open-assistant-button">点击页面右下角对话按钮开始</div>
+      <PrivacyControls />
     </div>
   );
 }

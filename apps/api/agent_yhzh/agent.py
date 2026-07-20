@@ -7,8 +7,11 @@ from langgraph.graph import END, START, MessagesState, StateGraph
 
 from agent_yhzh.config import settings
 from agent_yhzh.database import session_factory
+from agent_yhzh.security import get_current_caller
 from agent_yhzh.services.knowledge import generate_user_answer, search_knowledge
-from agent_yhzh.services.learning import capture_interaction
+from agent_yhzh.services.learning import capture_interaction, process_interaction_event
+from agent_yhzh.services.memory import list_memories
+from agent_yhzh.worker import enqueue_interaction
 
 
 def _build_checkpointer():
@@ -22,13 +25,15 @@ def _build_checkpointer():
             settings.checkpoint_database_url,
             autocommit=True,
             prepare_threshold=0,
-            connect_timeout=2,
+            connect_timeout=3,
         )
         saver = PostgresSaver(connection)
         saver.setup()
         atexit.register(connection.close)
         return saver
     except Exception:
+        if settings.environment == "production":
+            raise
         return MemorySaver()
 
 
@@ -47,28 +52,31 @@ async def assistant_node(
     if user_message is None:
         return {"messages": [AIMessage(content="请告诉我你想解决的问题。")]}
 
-    configurable = config.get("configurable", {})
-    user_id = str(configurable.get("user_id", "demo-user"))
-    session_id = str(configurable.get("thread_id", "demo-session"))
-    product_scope = str(configurable.get("product_scope", "default"))
+    caller = get_current_caller()
     question = str(user_message.content)
-
     async with session_factory() as session:
-        await capture_interaction(
+        event = await capture_interaction(
             session,
-            user_id=user_id,
-            session_id=session_id,
+            context=caller,
             event_type="question",
             content=question,
-            consent=True,
+            consent=caller.learning_consent,
         )
+        if event.processed_status == "queued":
+            try:
+                enqueue_interaction(event.id)
+            except Exception:
+                await process_interaction_event(session, event.id)
         knowledge = await search_knowledge(
             session,
             question,
-            product_scope=product_scope,
+            tenant_id=caller.tenant_id,
+            space_id=caller.space_id,
+            product_scope=caller.product_scope,
         )
+        memories = await list_memories(session, caller, limit=20)
 
-    answer = await generate_user_answer(question, knowledge)
+    answer = await generate_user_answer(question, knowledge, memories)
     return {"messages": [AIMessage(content=answer)]}
 
 
