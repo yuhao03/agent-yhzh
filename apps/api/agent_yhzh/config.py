@@ -35,9 +35,12 @@ class Settings(BaseSettings):
     candidate_review_threshold: int = 2
     candidate_min_distinct_users: int = 2
     request_rate_limit_per_minute: int = 60
+    auth_login_rate_limit_per_minute: int = 30
+    auth_register_rate_limit_per_minute: int = 15
     allow_private_model_urls: bool = False
 
     model_name: str = "openai/gpt-5.4-mini"
+    model_protocol: str = "chat_completions_v1"
     model_base_url: str = ""
     openai_api_key: str = ""
     embedding_model: str = "local/hash-1536"

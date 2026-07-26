@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 
 type Memory = {
@@ -14,15 +15,27 @@ export function PrivacyControls() {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
+  const [authExpired, setAuthExpired] = useState(false);
 
   useEffect(() => {
     void fetch("/api/user/session")
       .then((response) => response.json())
-      .then((data: { learningConsent: boolean }) => setConsent(data.learningConsent));
+      .then((data: { learningConsent: boolean; memberExpired?: boolean }) => {
+        setConsent(data.learningConsent);
+        if (data.memberExpired) setAuthExpired(true);
+      })
+      .catch(() => null);
   }, []);
 
+  function handleUnauthorized() {
+    setAuthExpired(true);
+    setMemories([]);
+  }
+
   async function loadMemories() {
-    const response = await fetch("/api/user/memories", { cache: "no-store" });
+    const response = await fetch("/api/user/memories", { cache: "no-store" }).catch(() => null);
+    if (!response) { setMessage("网络异常,暂时无法读取记忆。"); return; }
+    if (response.status === 401) { handleUnauthorized(); return; }
     if (response.ok) setMemories(await response.json() as Memory[]);
   }
 
@@ -31,8 +44,8 @@ export function PrivacyControls() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ learningConsent: next }),
-    });
-    if (response.ok) {
+    }).catch(() => null);
+    if (response?.ok) {
       setConsent(next);
       setMessage(next ? "已同意：后续互动可在脱敏后进入受控学习流程。" : "已关闭：后续互动不会用于学习。");
       if (!next) setMemories([]);
@@ -52,7 +65,9 @@ export function PrivacyControls() {
         consent: true,
         expires_in_days: 180,
       }),
-    });
+    }).catch(() => null);
+    if (!response) { setMessage("网络异常,保存失败,请稍后再试。"); return; }
+    if (response.status === 401) { handleUnauthorized(); return; }
     if (response.ok) {
       formElement.reset();
       await loadMemories();
@@ -61,12 +76,14 @@ export function PrivacyControls() {
   }
 
   async function removeMemory(id: string) {
-    await fetch(`/api/user/memories/${id}`, { method: "DELETE" });
+    const response = await fetch(`/api/user/memories/${id}`, { method: "DELETE" }).catch(() => null);
+    if (response?.status === 401) { handleUnauthorized(); return; }
     await loadMemories();
   }
 
   async function resetAll() {
-    await fetch("/api/user/memories", { method: "DELETE" });
+    const response = await fetch("/api/user/memories", { method: "DELETE" }).catch(() => null);
+    if (response?.status === 401) { handleUnauthorized(); return; }
     setMemories([]);
     setMessage("你的私有记忆已清空。");
   }
@@ -74,6 +91,7 @@ export function PrivacyControls() {
   return <div className="privacy-controls">
     <button className="privacy-toggle" onClick={() => { const next = !open; setOpen(next); if (next) void loadMemories(); }} type="button">隐私与个性化设置</button>
     {open ? <div className="privacy-panel">
+      {authExpired ? <p className="privacy-expired">登录已过期,请<Link href="/login">重新登录</Link>后继续管理专属记忆。</p> : null}
       <label className="consent-row"><input checked={consent} onChange={(event) => void toggleConsent(event.target.checked)} type="checkbox" /><span><strong>允许受控学习与个性化</strong><small>互动先脱敏，仅达到多用户阈值并经管理员审核后才会成为公共知识。个人偏好始终隔离保存。</small></span></label>
       <form className="memory-form" onSubmit={saveMemory}><select name="memory_type"><option value="preference">表达偏好</option><option value="workflow">工作习惯</option><option value="profile">个人背景</option></select><input disabled={!consent} name="content" placeholder="例如：回答尽量简洁，先给结论" required /><button disabled={!consent} type="submit">保存</button></form>
       <div className="memory-list">{memories.map((memory) => <div key={memory.id}><span>{memory.content}</span><button onClick={() => void removeMemory(memory.id)} type="button">删除</button></div>)}{!memories.length ? <small>还没有保存任何个人偏好。</small> : null}</div>

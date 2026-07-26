@@ -50,7 +50,8 @@ def _bearer_token(authorization: str | None) -> str | None:
 def _secure_equal(value: str | None, expected: str) -> bool:
     if value is None:
         return False
-    return hmac.compare_digest(value, expected)
+    # 统一转字节比较:compare_digest 遇到非 ASCII str 会抛 TypeError 变成 500。
+    return hmac.compare_digest(value.encode("utf-8"), expected.encode("utf-8"))
 
 
 def _safe_scope(value: str | None, default: str) -> str:
@@ -101,7 +102,7 @@ def require_admin_write(context: CallerContext | None = None) -> CallerContext:
     return context
 
 
-def get_user_context(
+async def get_user_context(
     authorization: str | None = Header(default=None),
     x_user_id: str | None = Header(default=None),
     x_session_id: str | None = Header(default=None),
@@ -109,17 +110,34 @@ def get_user_context(
     x_tenant_id: str | None = Header(default=None),
     x_space_id: str | None = Header(default=None),
     x_learning_consent: str | None = Header(default=None),
+    x_auth_token: str | None = Header(default=None),
 ) -> CallerContext:
     if not _secure_equal(_bearer_token(authorization), settings.agent_service_token):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    tenant_id = _safe_scope(x_tenant_id, settings.default_tenant_id)
     user_id = (x_user_id or "").strip()
     session_id = (x_session_id or "").strip()
-    if not user_id or len(user_id) > 120 or not session_id or len(session_id) > 160:
+    if not session_id or len(session_id) > 160:
         raise HTTPException(status_code=400, detail="Invalid user context")
+
+    auth_token = (x_auth_token or "").strip()
+    if auth_token:
+        # 登录态:身份以后端会话为准,拒绝伪造/过期/被禁用的会话。
+        from agent_yhzh.database import session_factory
+        from agent_yhzh.services.accounts import resolve_auth_token
+
+        async with session_factory() as session:
+            account = await resolve_auth_token(session, auth_token)
+        if account is None or account.tenant_id != tenant_id:
+            raise HTTPException(status_code=401, detail="Invalid session")
+        user_id = str(account.id)
+    elif not user_id or len(user_id) > 120:
+        raise HTTPException(status_code=400, detail="Invalid user context")
+
     return CallerContext(
         actor_id=user_id,
         role="user",
-        tenant_id=_safe_scope(x_tenant_id, settings.default_tenant_id),
+        tenant_id=tenant_id,
         space_id=_safe_scope(x_space_id, settings.default_space_id),
         user_id=user_id,
         session_id=session_id,
@@ -128,8 +146,8 @@ def get_user_context(
     )
 
 
-def caller_from_request_headers(request: Request) -> CallerContext:
-    return get_user_context(
+async def caller_from_request_headers(request: Request) -> CallerContext:
+    return await get_user_context(
         authorization=request.headers.get("authorization"),
         x_user_id=request.headers.get("x-user-id"),
         x_session_id=request.headers.get("x-session-id"),
@@ -137,6 +155,7 @@ def caller_from_request_headers(request: Request) -> CallerContext:
         x_tenant_id=request.headers.get("x-tenant-id"),
         x_space_id=request.headers.get("x-space-id"),
         x_learning_consent=request.headers.get("x-learning-consent"),
+        x_auth_token=request.headers.get("x-auth-token"),
     )
 
 

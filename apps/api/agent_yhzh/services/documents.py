@@ -23,6 +23,7 @@ from agent_yhzh.security import CallerContext
 from agent_yhzh.services.embeddings import content_hash, embed_text
 from agent_yhzh.services.model_config import get_runtime_model_config
 from agent_yhzh.services.object_store import get_object, put_object
+from agent_yhzh.services.taxonomy import classify_text_llm
 
 
 ALLOWED_SUFFIXES = {".txt", ".md", ".html", ".htm", ".pdf", ".docx"}
@@ -188,6 +189,7 @@ async def process_document_import(session: AsyncSession, job_id: uuid.UUID) -> N
                 title=f"{document.filename} · 第 {index + 1} 段",
                 content=chunk_content,
                 candidate_type="document",
+                category=await classify_text_llm(chunk_content, runtime),
                 status="pending_review",
                 occurrence_count=1,
                 distinct_user_count=0,

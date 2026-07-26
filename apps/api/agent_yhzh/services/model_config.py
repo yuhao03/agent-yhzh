@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import ipaddress
+import socket
 import time
 import uuid
 from dataclasses import dataclass
@@ -22,6 +23,7 @@ from agent_yhzh.services.audit import add_audit, add_outbox
 @dataclass(frozen=True)
 class RuntimeModelConfig:
     provider: str
+    api_protocol: str
     base_url: str | None
     chat_model: str
     embedding_model: str | None
@@ -56,6 +58,21 @@ def secret_hint(secret: str) -> str:
     return f"{secret[:2]}••••{secret[-4:]}"
 
 
+def _literal_ip(
+    hostname: str,
+) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    try:
+        return ipaddress.ip_address(hostname)
+    except ValueError:
+        pass
+    try:
+        # glibc 会把 2130706433、127.1、0x7f000001 这类字面量解析成 IPv4,
+        # 统一转成规范地址再做私网检查(不做 DNS 解析,保持离线确定)。
+        return ipaddress.ip_address(socket.inet_aton(hostname))
+    except OSError:
+        return None
+
+
 def validate_model_base_url(base_url: str | None) -> None:
     if not base_url:
         return
@@ -64,8 +81,8 @@ def validate_model_base_url(base_url: str | None) -> None:
         raise ValueError("unsafe_model_base_url")
     hostname = parsed.hostname.lower()
     is_private = hostname == "localhost" or hostname.endswith(".local")
-    try:
-        address = ipaddress.ip_address(hostname)
+    address = _literal_ip(hostname)
+    if address is not None:
         is_private = is_private or any(
             [
                 address.is_private,
@@ -75,8 +92,6 @@ def validate_model_base_url(base_url: str | None) -> None:
                 address.is_reserved,
             ]
         )
-    except ValueError:
-        pass
     if is_private and not settings.allow_private_model_urls:
         raise ValueError("private_model_url_not_allowed")
 
@@ -88,6 +103,7 @@ def config_dto(config: ModelProviderConfig) -> dict:
         "space_id": config.space_id,
         "name": config.name,
         "provider": config.provider,
+        "api_protocol": config.api_protocol,
         "base_url": config.base_url,
         "chat_model": config.chat_model,
         "embedding_model": config.embedding_model,
@@ -150,6 +166,7 @@ async def create_model_config(
         space_id=context.space_id,
         name=payload.name.strip(),
         provider=payload.provider,
+        api_protocol=payload.api_protocol,
         base_url=payload.base_url,
         chat_model=payload.chat_model.strip(),
         embedding_model=(payload.embedding_model or "").strip() or None,
@@ -270,6 +287,7 @@ async def get_runtime_model_config(
     if config:
         return RuntimeModelConfig(
             provider=config.provider,
+            api_protocol=config.api_protocol,
             base_url=config.base_url,
             chat_model=config.chat_model,
             embedding_model=config.embedding_model,
@@ -281,6 +299,7 @@ async def get_runtime_model_config(
         )
     return RuntimeModelConfig(
         provider="openai",
+        api_protocol=settings.model_protocol,
         base_url=settings.model_base_url or None,
         chat_model=settings.model_name,
         embedding_model=settings.embedding_model,
@@ -319,22 +338,26 @@ async def test_model_connection(
         return None
     validate_model_base_url(config.base_url)
     api_key = decrypt_secret(config.api_key_ciphertext)
+    runtime = RuntimeModelConfig(
+        provider=config.provider,
+        api_protocol=config.api_protocol,
+        base_url=config.base_url,
+        chat_model=config.chat_model,
+        embedding_model=config.embedding_model,
+        api_key=api_key,
+        temperature=0,
+        max_tokens=16,
+        timeout_seconds=config.timeout_seconds,
+        source="database",
+    )
     started = time.perf_counter()
     try:
-        from litellm import acompletion
+        from agent_yhzh.services.llm_gateway import chat_complete
 
-        response = await acompletion(
-            model=litellm_model_name(config.provider, config.chat_model),
-            messages=[{"role": "user", "content": "Reply with OK."}],
-            api_key=api_key,
-            api_base=config.base_url,
-            temperature=0,
-            max_tokens=3,
-            timeout=config.timeout_seconds,
-            num_retries=0,
+        await chat_complete(
+            runtime,
+            [{"role": "user", "content": "Reply with OK."}],
         )
-        if not response.choices:
-            raise RuntimeError("provider_returned_no_choices")
         success = True
         message = "连接成功，模型已返回响应。"
         config.last_test_status = "success"

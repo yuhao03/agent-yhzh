@@ -14,6 +14,8 @@ from agent_yhzh.models import (
 )
 from agent_yhzh.observability import LEARNING_EVENTS
 from agent_yhzh.security import CallerContext, hash_user_reference
+from agent_yhzh.services.model_config import get_runtime_model_config
+from agent_yhzh.services.taxonomy import classify_text, classify_text_llm
 
 
 REDACTION_PATTERNS = [
@@ -59,7 +61,11 @@ async def capture_interaction(
         session_id=context.session_id,
         product_scope=context.product_scope,
         event_type=event_type,
-        payload={"content": redacted, "target": target},
+        payload={
+            "content": redacted,
+            "target": target,
+            "category": classify_text(redacted),
+        },
         consent=effective_consent,
         sensitivity="redacted" if redaction_count else "normal",
         redaction_count=redaction_count,
@@ -118,12 +124,16 @@ async def process_interaction_event(
         .with_for_update()
     )
     if candidate is None:
+        runtime = await get_runtime_model_config(
+            session, event.tenant_id, event.space_id
+        )
         candidate = KnowledgeCandidate(
             tenant_id=event.tenant_id,
             space_id=event.space_id,
             normalized_key=normalized_key,
             title=content[:240],
             content=content,
+            category=await classify_text_llm(content, runtime),
             occurrence_count=1,
             distinct_user_count=1,
             score=0.2,

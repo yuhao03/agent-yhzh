@@ -4,12 +4,16 @@ import { backendUrl } from "@/lib/backend";
 import {
   USER_COOKIE,
   backendUserHeaders,
+  isAuthTokenExpired,
   readUserSession,
 } from "@/lib/user-session";
 
 async function forward(request: NextRequest, method: string) {
   const session = readUserSession(request.cookies.get(USER_COOKIE)?.value);
   if (!session) return NextResponse.json({ error: "Session required" }, { status: 401 });
+  if (isAuthTokenExpired(session)) {
+    return NextResponse.json({ error: "auth_expired" }, { status: 401 });
+  }
   const response = await fetch(`${backendUrl}/api/v1/user/memories`, {
     method,
     headers: {

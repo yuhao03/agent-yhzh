@@ -27,6 +27,7 @@ export function ModelSettings({
     const payload: Record<string, unknown> = {
       name: String(values.get("name") ?? "").trim(),
       provider: values.get("provider"),
+      api_protocol: values.get("api_protocol"),
       base_url: String(values.get("base_url") ?? "").trim() || null,
       chat_model: String(values.get("chat_model") ?? "").trim(),
       embedding_model: String(values.get("embedding_model") ?? "").trim() || null,
@@ -80,7 +81,7 @@ export function ModelSettings({
       <div className="model-list-heading"><strong>模型连接</strong><button onClick={() => { setCreating(true); setSelectedId(null); setMessage(""); }} type="button">+ 新建</button></div>
       {configs.map((config) => <button className={`model-config-card ${!creating && selectedId === config.id ? "active" : ""}`} key={config.id} onClick={() => { setCreating(false); setSelectedId(config.id); setMessage(""); }} type="button">
         <span className="model-config-icon"><Server size={17} /></span>
-        <span><strong>{config.name}</strong><small>{config.provider} · {config.chat_model}</small></span>
+        <span><strong>{config.name}</strong><small>{config.provider} · {config.api_protocol.replace("_v1", "")} · {config.chat_model}</small></span>
         {config.is_default ? <em>默认</em> : null}
       </button>)}
       {!configs.length ? <div className="model-empty">还没有模型配置。系统当前使用环境变量或离线降级回答。</div> : null}
@@ -92,7 +93,8 @@ export function ModelSettings({
         <div className="model-form-grid">
           <label><span>配置名称</span><input defaultValue={selected?.name ?? "主模型"} name="name" required /></label>
           <label><span>服务商</span><select defaultValue={selected?.provider ?? "openai_compatible"} name="provider"><option value="openai_compatible">OpenAI 兼容接口</option><option value="openai">OpenAI</option><option value="azure">Azure OpenAI</option><option value="anthropic">Anthropic</option><option value="ollama">Ollama</option></select></label>
-          <label className="wide"><span>API Base URL</span><div className="input-with-icon"><PlugZap size={15} /><input defaultValue={selected?.base_url ?? ""} name="base_url" placeholder="例如 https://api.example.com/v1" /></div><small>官方 OpenAI 可留空；兼容接口和 Ollama 请填写完整服务地址。</small></label>
+          <label><span>接口协议</span><select defaultValue={selected?.api_protocol ?? "chat_completions_v1"} name="api_protocol"><option value="chat_completions_v1">chat_completions_v1 — OpenAI 兼容 /chat/completions</option><option value="messages_v1">messages_v1 — Anthropic /messages</option><option value="responses_v1">responses_v1 — OpenAI /responses</option></select><small>决定请求报文格式,任意 Base URL 均可搭配任意协议。</small></label>
+          <label className="wide"><span>API Base URL</span><div className="input-with-icon"><PlugZap size={15} /><input defaultValue={selected?.base_url ?? ""} name="base_url" placeholder="例如 https://api.example.com/v1" /></div><small>官方 OpenAI / Anthropic 可留空；兼容接口和 Ollama 请填写完整服务地址。</small></label>
           <label><span>聊天模型</span><input defaultValue={selected?.chat_model ?? "gpt-4.1-mini"} name="chat_model" placeholder="模型 ID" required /></label>
           <label><span>Embedding 模型</span><input defaultValue={selected?.embedding_model ?? "local/hash-1536"} name="embedding_model" placeholder="可使用 local/hash-1536" /></label>
           <label className="wide"><span>API Key</span><div className="input-with-icon"><KeyRound size={15} /><input autoComplete="new-password" name="api_key" placeholder={selected?.api_key_configured ? `已配置 ${selected.api_key_hint ?? "••••••"}；留空表示不更换` : "本地 Ollama 可留空"} type="password" /></div></label>

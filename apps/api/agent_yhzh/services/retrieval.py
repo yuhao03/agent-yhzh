@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 import re
 
@@ -33,6 +34,7 @@ async def hybrid_search(
     space_id: str,
     product_scope: str = "default",
     limit: int = 5,
+    categories: Sequence[str] | None = None,
 ) -> list[RetrievalResult]:
     items = list(
         await session.scalars(
@@ -47,6 +49,14 @@ async def hybrid_search(
         )
     )
     items = [item for item in items if _in_scope(item, product_scope)]
+    preferred_categories = set(categories or [])
+    if preferred_categories:
+        # 子 Agent 优先检索本域分类;本域为空时回退全域,避免跨域问题无解。
+        scoped_items = [
+            item for item in items if item.category in preferred_categories
+        ]
+        if scoped_items:
+            items = scoped_items
     if not items:
         RETRIEVAL_REQUESTS.labels(result="empty").inc()
         return []
@@ -86,10 +96,13 @@ async def hybrid_search(
                 lexical *= 0.2
         vector = cosine_similarity(query_vector, embeddings.get(item.id, []))
         vector = max(0.0, vector)
+        score = lexical * 0.68 + vector * 0.32
+        if preferred_categories and item.category in preferred_categories:
+            score += 0.06
         ranked.append(
             RetrievalResult(
                 item=item,
-                score=lexical * 0.68 + vector * 0.32,
+                score=score,
                 lexical_score=lexical,
                 vector_score=vector,
             )

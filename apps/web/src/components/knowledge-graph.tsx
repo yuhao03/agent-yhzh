@@ -3,10 +3,32 @@
 import cytoscape from "cytoscape";
 import { useEffect, useRef } from "react";
 
-import type { KnowledgeGraph as KnowledgeGraphData } from "@/lib/types";
+import type { CategoryOption, KnowledgeGraph as KnowledgeGraphData } from "@/lib/types";
 
-export function KnowledgeGraph({ graph }: { graph: KnowledgeGraphData }) {
+const CATEGORY_COLORS: Record<string, string> = {
+  ecommerce_product_copy: "#31a56f",
+  ecommerce_listing: "#4478b8",
+  ecommerce_marketing: "#e0972f",
+  ecommerce_service: "#c25e8e",
+  ecommerce_analysis: "#7a5fc7",
+  general: "#6d7f76",
+};
+
+export function KnowledgeGraph({
+  graph,
+  categories = [],
+  onSelectNode,
+}: {
+  graph: KnowledgeGraphData;
+  categories?: CategoryOption[];
+  onSelectNode?: (id: string) => void;
+}) {
   const container = useRef<HTMLDivElement>(null);
+  const onSelectRef = useRef(onSelectNode);
+
+  useEffect(() => {
+    onSelectRef.current = onSelectNode;
+  }, [onSelectNode]);
 
   useEffect(() => {
     if (!container.current) return;
@@ -15,7 +37,12 @@ export function KnowledgeGraph({ graph }: { graph: KnowledgeGraphData }) {
       container: container.current,
       elements: [
         ...graph.nodes.map((node) => ({
-          data: { id: node.id, label: node.label, type: node.knowledge_type },
+          data: {
+            id: node.id,
+            label: node.label,
+            type: node.knowledge_type,
+            color: CATEGORY_COLORS[node.category] ?? CATEGORY_COLORS.general,
+          },
         })),
         ...graph.edges.map((edge) => ({
           data: {
@@ -43,9 +70,9 @@ export function KnowledgeGraph({ graph }: { graph: KnowledgeGraphData }) {
             "text-margin-y": 8,
             width: 36,
             height: 36,
-            "background-color": "#31a56f",
+            "background-color": "data(color)" as const,
             "border-width": 5,
-            "border-color": "#dff4e9",
+            "border-color": "#eef5f0",
           },
         },
         {
@@ -65,13 +92,16 @@ export function KnowledgeGraph({ graph }: { graph: KnowledgeGraphData }) {
           },
         },
         {
-          selector: "edge[inferred]",
+          selector: "edge[?inferred]",
           style: { "line-style": "dashed", opacity: 0.65 },
         },
       ],
     });
     instance.zoom(1);
     instance.center();
+    instance.on("tap", "node", (event) => {
+      onSelectRef.current?.(event.target.id() as string);
+    });
 
     return () => instance.destroy();
   }, [graph]);
@@ -84,5 +114,18 @@ export function KnowledgeGraph({ graph }: { graph: KnowledgeGraphData }) {
     );
   }
 
-  return <div className="knowledge-graph" ref={container} />;
+  return (
+    <div className="knowledge-graph-wrap">
+      <div className="knowledge-graph" ref={container} />
+      <div className="graph-legend">
+        {Object.entries(CATEGORY_COLORS).map(([slug, color]) => (
+          <span className="graph-legend-item" key={slug}>
+            <i style={{ background: color }} />
+            {categories.find((category) => category.slug === slug)?.name ?? slug}
+          </span>
+        ))}
+        <span className="graph-legend-hint">点击节点可查看知识详情</span>
+      </div>
+    </div>
+  );
 }

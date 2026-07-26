@@ -169,6 +169,9 @@ class KnowledgeItem(TimestampMixin, TenantSpaceMixin, Base):
     knowledge_type: Mapped[str] = mapped_column(
         String(80), default="faq", nullable=False, index=True
     )
+    category: Mapped[str] = mapped_column(
+        String(80), default="general", nullable=False, index=True
+    )
     status: Mapped[str] = mapped_column(
         String(32), default="draft", nullable=False, index=True
     )
@@ -321,6 +324,9 @@ class KnowledgeCandidate(TimestampMixin, TenantSpaceMixin, Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     candidate_type: Mapped[str] = mapped_column(
         String(80), default="faq", nullable=False
+    )
+    category: Mapped[str] = mapped_column(
+        String(80), default="general", nullable=False, index=True
     )
     status: Mapped[str] = mapped_column(
         String(32), default="observed", nullable=False, index=True
@@ -553,6 +559,9 @@ class ModelProviderConfig(TimestampMixin, TenantSpaceMixin, Base):
     provider: Mapped[str] = mapped_column(
         String(40), default="openai_compatible", nullable=False
     )
+    api_protocol: Mapped[str] = mapped_column(
+        String(40), default="chat_completions_v1", nullable=False
+    )
     base_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     chat_model: Mapped[str] = mapped_column(String(240), nullable=False)
     embedding_model: Mapped[str | None] = mapped_column(String(240), nullable=True)
@@ -613,6 +622,60 @@ class AuditEvent(Base):
     request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+
+
+class UserAccount(TimestampMixin, Base):
+    __tablename__ = "user_accounts"
+    __table_args__ = table_args(
+        "identity",
+        UniqueConstraint("tenant_id", "email", name="uq_user_account_email"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    tenant_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
+    display_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(512), nullable=False)
+    role: Mapped[str] = mapped_column(String(24), default="user", nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(24), default="active", nullable=False, index=True
+    )
+    product_scope: Mapped[str] = mapped_column(
+        String(80), default="default", nullable=False
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class AuthSession(Base):
+    __tablename__ = "auth_sessions"
+    __table_args__ = table_args(
+        "identity",
+        UniqueConstraint("token_hash", name="uq_auth_session_token"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey(foreign_key("identity", "user_accounts.id"), ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    user_agent: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
 

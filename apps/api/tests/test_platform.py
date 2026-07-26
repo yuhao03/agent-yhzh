@@ -168,6 +168,43 @@ async def test_document_import_and_hybrid_retrieval(client: AsyncClient):
     assert debug.json()[0]["item"]["id"] == knowledge.json()["id"]
 
 
+async def test_unknown_category_is_rejected(client: AsyncClient):
+    response = await client.post(
+        "/api/v1/admin/knowledge",
+        headers=admin_headers(),
+        json={
+            "title": "非法分类条目",
+            "content": "这是一段用于验证分类校验的知识内容。",
+            "knowledge_type": "faq",
+            "category": "not_a_real_category",
+            "publish": True,
+        },
+    )
+    assert response.status_code == 422
+
+
+async def test_knowledge_graph_nodes_expose_category(client: AsyncClient):
+    marker = uuid.uuid4().hex
+    created = await client.post(
+        "/api/v1/admin/knowledge",
+        headers=admin_headers(),
+        json={
+            "title": f"售后分类 {marker}",
+            "content": f"退款退货处理流程说明 {marker}，用于验证图谱节点分类。",
+            "knowledge_type": "faq",
+            "category": "ecommerce_service",
+            "publish": True,
+        },
+    )
+    assert created.status_code == 201
+    graph = await client.get(
+        "/api/v1/admin/knowledge/graph", headers=admin_headers()
+    )
+    assert graph.status_code == 200
+    nodes = {node["id"]: node for node in graph.json()["nodes"]}
+    assert nodes[created.json()["id"]]["category"] == "ecommerce_service"
+
+
 async def test_promotion_cannot_bypass_review_reason(client: AsyncClient):
     candidate_id = uuid.uuid4()
     response = await client.post(
@@ -243,8 +280,14 @@ def test_private_model_urls_are_blocked_when_not_explicitly_allowed():
     previous = settings.allow_private_model_urls
     settings.allow_private_model_urls = False
     try:
-        with pytest.raises(ValueError, match="private_model_url_not_allowed"):
-            validate_model_base_url("http://127.0.0.1:11434/v1")
+        for url in (
+            "http://127.0.0.1:11434/v1",
+            "http://2130706433/v1",
+            "http://127.1/v1",
+            "http://0x7f000001/v1",
+        ):
+            with pytest.raises(ValueError, match="private_model_url_not_allowed"):
+                validate_model_base_url(url)
         validate_model_base_url("https://api.example.com/v1")
     finally:
         settings.allow_private_model_urls = previous

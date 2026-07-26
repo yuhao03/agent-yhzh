@@ -22,7 +22,7 @@ from agent_yhzh.observability import (
     logger,
 )
 from agent_yhzh.rate_limit import rate_limiter
-from agent_yhzh.routers import admin, user
+from agent_yhzh.routers import admin, auth, user
 from agent_yhzh.security import (
     caller_from_request_headers,
     hash_user_reference,
@@ -60,7 +60,7 @@ class RequestBoundaryMiddleware:
         status_code = 500
         try:
             if path.startswith("/ag-ui"):
-                context = caller_from_request_headers(request)
+                context = await caller_from_request_headers(request)
                 allowed = await rate_limiter.allow(
                     f"{context.tenant_id}:{hash_user_reference(context.user_id or '')}"
                 )
@@ -129,10 +129,12 @@ app.add_middleware(
         "X-Session-Id",
         "X-Product-Scope",
         "X-Learning-Consent",
+        "X-Auth-Token",
         "X-Request-Id",
     ],
 )
 app.include_router(admin.router)
+app.include_router(auth.router)
 app.include_router(user.router)
 
 

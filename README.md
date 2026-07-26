@@ -1,12 +1,14 @@
 # agent-yhzh
 
-一个从空知识库开始、在真实用户使用中逐步成长的智能体应用基线。
+一个从空知识库开始、在真实用户使用中逐步成长的**电商多专家智能体平台**:supervisor 按意图把问题分派给商品文案、平台运营、营销策划、客服售后、选品分析或通用助手六位子 Agent,每位专家按自己的知识分类检索作答。
 
 ## 已串联的技术栈
 
-- 普通用户前端：Next.js 16 + React 19 + CopilotKit v2。
+- 普通用户前端：Next.js 16 + React 19 + CopilotKit v2(营销首页 + `/chat` 全屏工作台 + 登录/注册)。
 - 管理员知识后台：Next.js Server Components、签名角色会话、TanStack Table、ECharts、Cytoscape。
-- Agent 后端：uv 隔离环境、FastAPI、LangGraph、AG-UI、LiteLLM。
+- Agent 后端：uv 隔离环境、FastAPI、LangGraph supervisor + 子 Agent 编排、AG-UI。
+- 多协议模型网关:同一配置可选 `chat/completions v1`(OpenAI 风格)、`messages v1`(Anthropic 风格)或 `responses v1`(OpenAI Responses),任意第三方 Base URL 均可搭配任意协议。
+- 多用户体系:注册/登录(scrypt 密码哈希)、后端会话逐请求校验、访客模式保留,管理台可禁用账号。
 - 正式知识底座：PostgreSQL 全文检索 + pgvector，逻辑分离正式知识、候选、证据、版本、审核、审计、Outbox 和用户私有记忆。
 - 异步任务：Redis + Celery，负责互动聚合、文档解析、保留期清理和 Outbox 分发。
 - 文档底座：本地对象存储或 S3/MinIO，支持 txt、md、html、pdf、docx。
@@ -16,9 +18,10 @@
 
 普通用户只能使用智能助手，不存在知识库入口，也不能获取候选记录、知识原文、关系图谱或内部检索过程。管理员登录后才可以：
 
-- 查看互动中逐步聚合的候选知识；
-- 将问题线索编辑成“已核验标准答案”后发布；
+- 查看互动中逐步聚合、已自动归类的候选知识(电商六大分类);
+- 将问题线索编辑成“已核验标准答案”后按分类发布；
 - 手工录入正式知识；
+- 管理注册用户(启用/禁用,禁用即刻撤销其全部登录会话);
 - 查看知识 Grid View 与局部关系图谱；
 - 保存筛选视图、查看证据/版本/审核详情和不可变审计记录；
 - 上传文档并把解析片段送入候选审核池；
@@ -69,7 +72,7 @@ MODEL_NAME=openai/gpt-5.4-mini
 OPENAI_API_KEY=你的密钥
 ```
 
-也可以登录管理员后台，在“模型配置”中新增 OpenAI、OpenAI 兼容接口、Azure OpenAI、Anthropic 或 Ollama 连接。后台配置优先于环境变量，保存后无需重启即可生效。API Key 使用 `CONFIG_ENCRYPTION_KEY` 派生的密钥加密入库，读取接口只返回掩码。
+也可以登录管理员后台，在“模型配置”中新增 OpenAI、OpenAI 兼容接口、Azure OpenAI、Anthropic 或 Ollama 连接,并为每个连接选择接口协议(`chat_completions_v1` / `messages_v1` / `responses_v1`)。后台配置优先于环境变量，保存后无需重启即可生效。API Key 使用 `CONFIG_ENCRYPTION_KEY` 派生的密钥加密入库，读取接口只返回掩码。
 
 生产环境默认阻止模型连接访问内网、回环和链路本地地址，以降低 SSRF 风险。确需连接内网 Ollama/vLLM 时，经过网络评审后显式设置 `ALLOW_PRIVATE_MODEL_URLS=true`。
 
@@ -80,13 +83,13 @@ OPENAI_API_KEY=你的密钥
   ↓
 用户问题 / 纠正 / 反馈
   ↓
-脱敏事件 + 去重聚合候选
+脱敏事件 + 自动归类(电商六大分类)+ 去重聚合候选
   ↓ 同时达到出现次数与独立用户数阈值
-管理员审核并填写标准答案
+管理员审核、修正分类并填写标准答案
   ↓
-正式知识 + 证据 + 版本 + 关系图谱 + 审计
+正式知识 + 分类 + 证据 + 版本 + 关系图谱 + 审计
   ↓
-后续回答获得增强
+对应领域的子 Agent 优先检索本域知识,回答持续增强
 ```
 
 已发布候选不会因为用户再次提问而重新回到待审核状态。用户身份仅保存为加盐哈希，私有记忆与公共知识使用不同的数据域。互动事件按保留期清理，个人记忆支持过期和用户主动删除。
@@ -115,5 +118,9 @@ make infra-down # 停止本项目基础设施
 - [x] 证据、版本、审核、关系、审计和 Alembic 迁移
 - [x] Prometheus、结构化日志、可选 OpenTelemetry/Langfuse 配置
 - [x] 后台 LLM/Embedding 配置、API Key 加密、连接测试和运行时热加载
+- [x] 多协议模型网关(chat completions / messages / responses)
+- [x] Supervisor + 六个电商子 Agent 编排,路由结果经 AG-UI 状态同步到前端
+- [x] 知识分类体系与自动归类,子 Agent 按分类检索(空结果回退全域)
+- [x] 多用户注册/登录/会话、访客模式与管理台用户管理
 - [x] 权限、脱敏、阈值、记忆隔离、文档导入和检索回归测试
 - [ ] 上线时接入企业 OIDC、真实 embedding/rerank 模型、病毒扫描和双人高风险审批

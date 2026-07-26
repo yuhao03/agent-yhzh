@@ -1,4 +1,5 @@
 export type AdminStats = {
+  categories: Record<string, number>;
   published_knowledge: number;
   draft_knowledge: number;
   candidates: number;
@@ -19,6 +20,7 @@ export type KnowledgeItem = {
   summary: string | null;
   content: string;
   knowledge_type: string;
+  category: string;
   sensitivity: string;
   agent_scope: string[];
   properties: Record<string, unknown>;
@@ -39,6 +41,7 @@ export type KnowledgeCandidate = {
   title: string;
   content: string;
   candidate_type: string;
+  category: string;
   status: string;
   risk_level: string;
   sensitivity: string;
@@ -58,6 +61,7 @@ export type KnowledgeGraph = {
     id: string;
     label: string;
     knowledge_type: string;
+    category: string;
     source_kind: string;
     status: string;
   }>;
@@ -143,6 +147,7 @@ export type ModelProviderConfig = {
   space_id: string;
   name: string;
   provider: "openai" | "openai_compatible" | "azure" | "anthropic" | "ollama";
+  api_protocol: "chat_completions_v1" | "messages_v1" | "responses_v1";
   base_url: string | null;
   chat_model: string;
   embedding_model: string | null;
@@ -160,6 +165,24 @@ export type ModelProviderConfig = {
   updated_at: string;
 };
 
+export type CategoryOption = {
+  slug: string;
+  name: string;
+  description: string;
+};
+
+export type UserAccount = {
+  id: string;
+  tenant_id: string;
+  email: string;
+  display_name: string;
+  role: string;
+  status: string;
+  last_login_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type AdminDashboardPayload = {
   stats: AdminStats;
   candidates: KnowledgeCandidate[];
@@ -172,4 +195,6 @@ export type AdminDashboardPayload = {
   views: KnowledgeView[];
   audits: AuditEvent[];
   modelConfigs: ModelProviderConfig[];
+  users: UserAccount[];
+  categories: CategoryOption[];
 };

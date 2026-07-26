@@ -13,7 +13,7 @@ export type AdminSession = {
 };
 
 function sessionSecret(): string {
-  const secret = process.env.ADMIN_SESSION_SECRET ?? "development-only-session-secret";
+  const secret = process.env.ADMIN_SESSION_SECRET ?? "change-me-admin-session-secret";
   if (process.env.NODE_ENV === "production" && secret.startsWith("change-me")) {
     throw new Error("ADMIN_SESSION_SECRET must be configured in production");
   }

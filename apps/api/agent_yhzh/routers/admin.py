@@ -30,7 +30,14 @@ from agent_yhzh.schemas import (
     RejectCandidateRequest,
     RetrievalDebugItem,
 )
+from agent_yhzh.schemas import (
+    CategoryRead,
+    UserAccountAdminRead,
+    UserAccountStatusUpdate,
+)
 from agent_yhzh.security import CallerContext, require_admin, require_admin_write
+from agent_yhzh.services.accounts import list_user_accounts, set_account_status
+from agent_yhzh.services.taxonomy import category_options
 from agent_yhzh.services.documents import (
     create_document_upload,
     list_documents,
@@ -99,10 +106,45 @@ async def get_knowledge(
     limit: int = Query(default=100, ge=1, le=500),
     status: str | None = Query(default=None),
     query: str | None = Query(default=None, max_length=240),
+    category: str | None = Query(default=None, max_length=80),
     context: CallerContext = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ):
-    return await list_knowledge(session, context, limit, status=status, query=query)
+    return await list_knowledge(
+        session, context, limit, status=status, query=query, category=category
+    )
+
+
+@router.get("/categories", response_model=list[CategoryRead])
+async def get_categories(
+    context: CallerContext = Depends(require_admin),
+):
+    return category_options()
+
+
+@router.get("/users", response_model=list[UserAccountAdminRead])
+async def get_users(
+    limit: int = Query(default=200, ge=1, le=500),
+    query: str | None = Query(default=None, max_length=240),
+    context: CallerContext = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    return await list_user_accounts(session, context, limit=limit, query=query)
+
+
+@router.patch("/users/{account_id}", response_model=UserAccountAdminRead)
+async def patch_user_status(
+    account_id: uuid.UUID,
+    payload: UserAccountStatusUpdate,
+    context: CallerContext = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    account = await set_account_status(
+        session, ensure_write(context), account_id, payload.status
+    )
+    if account is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    return account
 
 
 @router.get("/knowledge/graph", response_model=KnowledgeGraphRead)
@@ -286,6 +328,7 @@ async def get_audits(
 async def debug_retrieval(
     query: str = Query(min_length=1, max_length=500),
     limit: int = Query(default=10, ge=1, le=50),
+    category: str | None = Query(default=None, max_length=80),
     context: CallerContext = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ):
@@ -295,6 +338,7 @@ async def debug_retrieval(
         tenant_id=context.tenant_id,
         space_id=context.space_id,
         limit=limit,
+        categories=[category] if category else None,
     )
     return [
         {

@@ -2,10 +2,18 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from agent_yhzh.services.taxonomy import CATEGORY_SLUGS
 
 
 KnowledgeStatus = Literal["draft", "pending_review", "published", "deprecated"]
+
+
+def _validate_category_slug(value: str) -> str:
+    if value not in CATEGORY_SLUGS:
+        raise ValueError("category must be one of: " + ", ".join(CATEGORY_SLUGS))
+    return value
 
 
 class KnowledgeItemCreate(BaseModel):
@@ -13,6 +21,7 @@ class KnowledgeItemCreate(BaseModel):
     content: str = Field(min_length=10, max_length=100_000)
     summary: str | None = Field(default=None, max_length=2000)
     knowledge_type: str = Field(default="faq", min_length=1, max_length=80)
+    category: str = Field(default="general", min_length=1, max_length=80)
     sensitivity: str = Field(default="internal", max_length=32)
     agent_scope: list[str] = Field(default_factory=lambda: ["default"])
     properties: dict[str, Any] = Field(default_factory=dict)
@@ -26,17 +35,28 @@ class KnowledgeItemCreate(BaseModel):
             raise ValueError("agent_scope must contain valid scopes")
         return normalized
 
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, value: str) -> str:
+        return _validate_category_slug(value)
+
 
 class KnowledgeItemUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=2, max_length=240)
     content: str | None = Field(default=None, min_length=10, max_length=100_000)
     summary: str | None = Field(default=None, max_length=2000)
     knowledge_type: str | None = Field(default=None, min_length=1, max_length=80)
+    category: str | None = Field(default=None, min_length=1, max_length=80)
     sensitivity: str | None = Field(default=None, max_length=32)
     agent_scope: list[str] | None = None
     properties: dict[str, Any] | None = None
     status: KnowledgeStatus | None = None
     change_reason: str = Field(default="管理员编辑", min_length=2, max_length=1000)
+
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, value: str | None) -> str | None:
+        return _validate_category_slug(value) if value is not None else None
 
 
 class KnowledgeItemRead(BaseModel):
@@ -49,6 +69,7 @@ class KnowledgeItemRead(BaseModel):
     summary: str | None
     content: str
     knowledge_type: str
+    category: str
     sensitivity: str
     agent_scope: list[str]
     properties: dict[str, Any]
@@ -71,6 +92,7 @@ class CandidateRead(BaseModel):
     title: str
     content: str
     candidate_type: str
+    category: str
     status: str
     risk_level: str
     sensitivity: str
@@ -108,6 +130,7 @@ class InteractionAccepted(BaseModel):
 
 
 class AdminStats(BaseModel):
+    categories: dict[str, int] = Field(default_factory=dict)
     published_knowledge: int
     draft_knowledge: int
     candidates: int
@@ -131,8 +154,14 @@ class PromoteCandidateRequest(BaseModel):
     title: str = Field(min_length=2, max_length=240)
     content: str = Field(min_length=10, max_length=100_000)
     knowledge_type: str = Field(default="faq", min_length=1, max_length=80)
+    category: str = Field(default="general", min_length=1, max_length=80)
     agent_scope: list[str] = Field(default_factory=lambda: ["default"])
     review_reason: str = Field(min_length=3, max_length=2000)
+
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, value: str) -> str:
+        return _validate_category_slug(value)
 
 
 class RejectCandidateRequest(BaseModel):
@@ -231,6 +260,7 @@ class KnowledgeGraphNode(BaseModel):
     id: str
     label: str
     knowledge_type: str
+    category: str = "general"
     source_kind: str
     status: str
 
@@ -346,10 +376,13 @@ ModelProvider = Literal[
     "openai", "openai_compatible", "azure", "anthropic", "ollama"
 ]
 
+ApiProtocol = Literal["chat_completions_v1", "messages_v1", "responses_v1"]
+
 
 class ModelProviderConfigCreate(BaseModel):
     name: str = Field(min_length=2, max_length=160)
     provider: ModelProvider = "openai_compatible"
+    api_protocol: ApiProtocol = "chat_completions_v1"
     base_url: str | None = Field(default=None, max_length=1000)
     chat_model: str = Field(min_length=1, max_length=240)
     embedding_model: str | None = Field(default=None, max_length=240)
@@ -368,10 +401,18 @@ class ModelProviderConfigCreate(BaseModel):
             raise ValueError("base_url must start with http:// or https://")
         return normalized or None
 
+    @model_validator(mode="after")
+    def validate_messages_temperature(self) -> "ModelProviderConfigCreate":
+        # Anthropic messages 协议温度上限为 1,超出会被上游直接拒绝。
+        if self.api_protocol == "messages_v1" and self.temperature > 1:
+            raise ValueError("messages_v1 requires temperature <= 1")
+        return self
+
 
 class ModelProviderConfigUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=160)
     provider: ModelProvider | None = None
+    api_protocol: ApiProtocol | None = None
     base_url: str | None = Field(default=None, max_length=1000)
     chat_model: str | None = Field(default=None, min_length=1, max_length=240)
     embedding_model: str | None = Field(default=None, max_length=240)
@@ -399,6 +440,7 @@ class ModelProviderConfigRead(BaseModel):
     space_id: str
     name: str
     provider: str
+    api_protocol: str
     base_url: str | None
     chat_model: str
     embedding_model: str | None
@@ -420,3 +462,47 @@ class ModelConnectionTestResponse(BaseModel):
     success: bool
     latency_ms: int
     message: str
+
+
+class CategoryRead(BaseModel):
+    slug: str
+    name: str
+    description: str
+
+
+class RegisterRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=320)
+    password: str = Field(min_length=8, max_length=128)
+    display_name: str = Field(min_length=1, max_length=160)
+
+
+class LoginRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=320)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class UserAccountRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    email: str
+    display_name: str
+    role: str
+    status: str
+    last_login_at: datetime | None
+    created_at: datetime
+
+
+class AuthSessionResponse(BaseModel):
+    user: UserAccountRead
+    token: str
+    expires_at: datetime
+
+
+class UserAccountAdminRead(UserAccountRead):
+    tenant_id: str
+    updated_at: datetime
+
+
+class UserAccountStatusUpdate(BaseModel):
+    status: Literal["active", "disabled"]
